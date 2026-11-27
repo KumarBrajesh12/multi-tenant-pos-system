@@ -4,7 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { TenantContext } from '../access/tenant-context';
 import { AppException } from '../common/exceptions/app.exception';
 import { IdempotencyScope, IdempotencyService, StoredResponse } from '../idempotency/idempotency.service';
-import { hashRequest } from '../idempotency/request-hash';
+import { hashRequest } from '../common/utils/hash';
 import { MovementReason } from '../inventory/entities/inventory-movement.entity';
 import { InventoryRepository } from '../inventory/inventory.repository';
 import { PaymentsRepository } from '../payments/payments.repository';

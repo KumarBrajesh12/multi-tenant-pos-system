@@ -7,6 +7,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { ListProductsQuery } from './dto/list-products.query';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './entities/product.entity';
+import { ProductCache } from './product-cache';
 import { ProductsRepository } from './products.repository';
 
 export const toProductResponse = (p: Product) => ({
@@ -25,15 +26,23 @@ export type ProductResponse = ReturnType<typeof toProductResponse>;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly products: ProductsRepository) {}
+  constructor(
+    private readonly products: ProductsRepository,
+    private readonly cache: ProductCache,
+  ) {}
 
-  async list(tenant: TenantContext, query: ListProductsQuery) {
-    const [rows, total] = await this.products.list(tenant.merchantId, query);
-    return paginate(rows.map(toProductResponse), total, query);
+  list(tenant: TenantContext, query: ListProductsQuery) {
+    return this.cache.getOrLoadList(tenant.merchantId, query, async () => {
+      const [rows, total] = await this.products.list(tenant.merchantId, query);
+      return paginate(rows.map(toProductResponse), total, query);
+    });
   }
 
-  async get(tenant: TenantContext, productId: string): Promise<ProductResponse> {
-    return toProductResponse(await this.getOrFail(tenant.merchantId, productId));
+  get(tenant: TenantContext, productId: string): Promise<ProductResponse> {
+    // a 404 throws inside the loader, so missing products are never cached
+    return this.cache.getOrLoadItem(tenant.merchantId, productId, async () =>
+      toProductResponse(await this.getOrFail(tenant.merchantId, productId)),
+    );
   }
 
   async create(tenant: TenantContext, dto: CreateProductDto): Promise<ProductResponse> {
@@ -45,6 +54,7 @@ export class ProductsService {
         priceCents: dto.priceCents,
         isActive: dto.isActive ?? true,
       });
+      await this.cache.invalidate(tenant.merchantId);
       return toProductResponse(product);
     } catch (err) {
       throw this.mapSkuConflict(err, dto.sku);
@@ -54,11 +64,14 @@ export class ProductsService {
   async update(tenant: TenantContext, productId: string, dto: UpdateProductDto): Promise<ProductResponse> {
     const product = await this.getOrFail(tenant.merchantId, productId);
     Object.assign(product, dto);
+    let saved: Product;
     try {
-      return toProductResponse(await this.products.save(product));
+      saved = await this.products.save(product);
     } catch (err) {
       throw this.mapSkuConflict(err, dto.sku);
     }
+    await this.cache.invalidate(tenant.merchantId);
+    return toProductResponse(saved);
   }
 
   // soft delete: products are referenced by sales history, so we never remove rows
@@ -67,6 +80,7 @@ export class ProductsService {
     if (product.isActive) {
       product.isActive = false;
       await this.products.save(product);
+      await this.cache.invalidate(tenant.merchantId);
     }
     return toProductResponse(product);
   }

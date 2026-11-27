@@ -6,6 +6,7 @@ import { AccessModule } from './access/access.module';
 import { TenantGuard } from './access/tenant.guard';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { CacheModule } from './cache/cache.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { configuration, envFilePaths } from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
@@ -29,6 +30,7 @@ import { StoresModule } from './stores/stores.module';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    CacheModule,
     AccessModule,
     AuthModule,
     HealthModule,

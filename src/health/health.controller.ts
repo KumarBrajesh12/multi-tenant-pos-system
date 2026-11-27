@@ -14,7 +14,7 @@ export class HealthController {
   @ApiOperation({ summary: 'Liveness/readiness: database (required) and Redis (optional) status' })
   async check(@Res({ passthrough: true }) res: Response) {
     const report = await this.health.check();
-    res.status(report.status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE);
+    res.status(report.status === 'error' ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.OK);
     return report;
   }
 }
