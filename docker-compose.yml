@@ -1,0 +1,68 @@
+# Full stack: API + PostgreSQL + Redis.
+#   docker compose up --build -d
+#   docker compose exec api npm run seed:prod
+#
+# Using your *local* Postgres instead of the container? Point the API at the host:
+#   DB_HOST_DOCKER=host.docker.internal POSTGRES_USER=<user> POSTGRES_PASSWORD=<pw> POSTGRES_DB=pos_dev \
+#     docker compose up --build api redis
+name: multi-tenant-pos
+
+services:
+  api:
+    build: .
+    image: multi-tenant-pos-api:local
+    ports:
+      - "${API_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SWAGGER_ENABLED: "true"
+      DB_HOST: ${DB_HOST_DOCKER:-postgres}
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-pos}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-pos_local_password}
+      DB_NAME: ${POSTGRES_DB:-pos}
+      DB_RUN_MIGRATIONS: "true"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (see .env.example)}
+      JWT_EXPIRES_IN: 1h
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_ENABLED: "true"
+      PAYMENT_PROVIDER: mock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos_local_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pos}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_HOST_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

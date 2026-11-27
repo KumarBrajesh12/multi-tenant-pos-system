@@ -1,0 +1,18 @@
+# dependencies & build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# environment files (only the *.example templates are committed)
+.env
+.env.*
+!.env.example
+!.env.test.example
+
+# logs & OS/editor noise
+*.log
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/
