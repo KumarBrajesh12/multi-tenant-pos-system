@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AccessModule } from './access/access.module';
 import { TenantGuard } from './access/tenant.guard';
 import { AuthModule } from './auth/auth.module';
@@ -13,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { MerchantsModule } from './merchants/merchants.module';
 import { ProductsModule } from './products/products.module';
+import { SalesModule } from './sales/sales.module';
 import { StoresModule } from './stores/stores.module';
 
 @Module({
@@ -25,6 +27,7 @@ import { StoresModule } from './stores/stores.module';
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: false },
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     AccessModule,
     AuthModule,
@@ -33,6 +36,7 @@ import { StoresModule } from './stores/stores.module';
     StoresModule,
     ProductsModule,
     InventoryModule,
+    SalesModule,
   ],
   providers: [
     // order matters: authenticate first, then check tenant access
