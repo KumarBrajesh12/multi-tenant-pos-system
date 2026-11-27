@@ -1,10 +1,17 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { AccessModule } from './access/access.module';
+import { TenantGuard } from './access/tenant.guard';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { configuration, envFilePaths } from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { MerchantsModule } from './merchants/merchants.module';
+import { StoresModule } from './stores/stores.module';
 
 @Module({
   imports: [
@@ -17,7 +24,16 @@ import { HealthModule } from './health/health.module';
       validationOptions: { abortEarly: false },
     }),
     DatabaseModule,
+    AccessModule,
+    AuthModule,
     HealthModule,
+    MerchantsModule,
+    StoresModule,
+  ],
+  providers: [
+    // order matters: authenticate first, then check tenant access
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
+    { provide: APP_GUARD, useExisting: TenantGuard },
   ],
 })
 export class AppModule implements NestModule {
