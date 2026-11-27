@@ -1,9 +1,6 @@
 import * as Joi from 'joi';
 
-/**
- * Validates process.env at startup. The app refuses to boot with a missing or
- * malformed variable instead of failing later at the first request.
- */
+// fail fast on boot if something is missing
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(3000),

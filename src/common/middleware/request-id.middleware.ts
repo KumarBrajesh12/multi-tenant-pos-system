@@ -5,10 +5,6 @@ import { NextFunction, Request, Response } from 'express';
 const HEADER = 'x-request-id';
 const SAFE_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
-/**
- * Propagates (or generates) a request id so logs and error responses can be
- * correlated. Client-supplied ids are only accepted if they look harmless.
- */
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
   use(req: Request & { requestId?: string }, res: Response, next: NextFunction): void {

@@ -1,7 +1,4 @@
-/**
- * Typed configuration tree. Values are already validated/coerced by
- * envValidationSchema, so plain casts are safe here.
- */
+// env is already validated by envValidationSchema at this point
 export const configuration = () => ({
   env: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 3000),
@@ -43,7 +40,7 @@ export const configuration = () => ({
 
 export type AppConfig = ReturnType<typeof configuration>;
 
-/** Env file resolution: `.env.<NODE_ENV>` wins over the shared `.env`. */
+// .env.<NODE_ENV> takes priority over .env
 export const envFilePaths = (): string[] => {
   const env = process.env.NODE_ENV ?? 'development';
   return [`.env.${env}`, '.env'];

@@ -1,9 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 
-/**
- * Business error with a stable, machine-readable `code` that clients can
- * branch on (the human `message` may change). Rendered by AllExceptionsFilter.
- */
+// Business error with a stable `code` the POS client can switch on.
 export class AppException extends HttpException {
   constructor(
     status: HttpStatus,
@@ -15,10 +12,7 @@ export class AppException extends HttpException {
   }
 }
 
-/**
- * 404 used for both "does not exist" and "exists but belongs to another
- * tenant/store", so callers cannot probe for other tenants' IDs.
- */
+// Also used when the record exists but belongs to another tenant, so IDs can't be probed.
 export class ResourceNotFoundException extends AppException {
   constructor(resource: string, details?: Record<string, unknown>) {
     super(HttpStatus.NOT_FOUND, `${resource.toUpperCase()}_NOT_FOUND`, `${resource} not found`, details);

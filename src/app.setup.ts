@@ -3,19 +3,16 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
-/**
- * Global HTTP pipeline. Shared by main.ts and the e2e tests so the tests
- * exercise exactly the same validation and error handling as production.
- */
+// shared with e2e tests so they run with the same pipes/filters as the real app
 export function configureApp(app: INestApplication): void {
   app.use(helmet());
   app.enableShutdownHooks();
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // strip properties without decorators...
-      forbidNonWhitelisted: true, // ...and reject the request if any were sent
-      transform: true, // build DTO instances / coerce query params
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
       transformOptions: { enableImplicitConversion: false },
     }),
   );

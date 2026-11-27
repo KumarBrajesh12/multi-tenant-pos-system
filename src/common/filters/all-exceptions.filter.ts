@@ -21,17 +21,13 @@ export interface ErrorResponseBody {
   requestId?: string;
 }
 
-/** Postgres SQLSTATE codes we translate into client errors. */
+// postgres error codes
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_CHECK_VIOLATION = '23514';
 const PG_INVALID_TEXT_REPRESENTATION = '22P02';
 
-/**
- * Renders every error in one consistent shape and makes sure SQL, stack
- * traces and other internals never reach the client. Unexpected errors are
- * logged with the request id so they can be correlated with the response.
- */
+// Same error shape for everything. DB errors / stack traces are logged, never returned.
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
@@ -81,7 +77,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const response = exception.getResponse();
-      // ValidationPipe puts an array of messages in `message`
+      // ValidationPipe errors come as an array
       if (typeof response === 'object' && response !== null) {
         const r = response as { message?: string | string[] };
         if (Array.isArray(r.message)) {
