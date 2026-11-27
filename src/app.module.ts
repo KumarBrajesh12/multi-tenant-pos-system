@@ -10,7 +10,9 @@ import { configuration, envFilePaths } from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { MerchantsModule } from './merchants/merchants.module';
+import { ProductsModule } from './products/products.module';
 import { StoresModule } from './stores/stores.module';
 
 @Module({
@@ -29,6 +31,8 @@ import { StoresModule } from './stores/stores.module';
     HealthModule,
     MerchantsModule,
     StoresModule,
+    ProductsModule,
+    InventoryModule,
   ],
   providers: [
     // order matters: authenticate first, then check tenant access
