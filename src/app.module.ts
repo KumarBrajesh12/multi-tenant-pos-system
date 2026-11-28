@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AccessModule } from './access/access.module';
+import { AppController } from './app.controller';
 import { TenantGuard } from './access/tenant.guard';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -40,6 +41,7 @@ import { StoresModule } from './stores/stores.module';
     InventoryModule,
     SalesModule,
   ],
+  controllers: [AppController],
   providers: [
     // order matters: authenticate first, then check tenant access
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
@@ -48,6 +50,7 @@ import { StoresModule } from './stores/stores.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes('*path');
+    // '{*path}' (not '*path') so the root path "/" is included as well
+    consumer.apply(RequestIdMiddleware).forRoutes('{*path}');
   }
 }

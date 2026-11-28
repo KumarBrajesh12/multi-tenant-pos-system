@@ -163,6 +163,7 @@ back to [.env.test.example](.env.test.example). Adjust the DB credentials there 
 | `test/tenant-isolation.e2e-spec.ts` | **Test 3** cross-tenant access to products, inventory, sales, payments |
 | `test/idempotency.e2e-spec.ts` | **Test 4** retries, single charge, different payload, parallel duplicates |
 | `test/concurrency.e2e-spec.ts` | **Bonus** parallel sales vs. limited stock, no deadlocks |
+| `test/app.e2e-spec.ts` | root endpoint, request id and error shape on every route |
 | `src/**/*.spec.ts` | permissions, request hashing, payment timeout handling, mock provider |
 
 The tests check outcomes in the database (stock levels, rows created, number of provider calls),
@@ -447,6 +448,7 @@ Send it as `Authorization: Bearer <token>` on every other request.
 
 | Method | Path | Permission |
 |---|---|---|
+| GET | `/` | public (API info and links) |
 | POST | `/auth/login` | public |
 | GET | `/auth/me` | any user |
 | GET | `/health` | public |
