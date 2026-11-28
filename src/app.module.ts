@@ -14,7 +14,9 @@ import { envValidationSchema } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { MembersModule } from './members/members.module';
 import { MerchantsModule } from './merchants/merchants.module';
+import { PlatformModule } from './platform/platform.module';
 import { ProductsModule } from './products/products.module';
 import { SalesModule } from './sales/sales.module';
 import { StoresModule } from './stores/stores.module';
@@ -40,6 +42,8 @@ import { StoresModule } from './stores/stores.module';
     ProductsModule,
     InventoryModule,
     SalesModule,
+    MembersModule,
+    PlatformModule,
   ],
   controllers: [AppController],
   providers: [

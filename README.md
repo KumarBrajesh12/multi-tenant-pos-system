@@ -24,6 +24,7 @@ when two terminals sell at the same time, safe retries, and what happens when a 
 **Features**
 
 - JWT login, role based access (merchant admin / store manager / cashier)
+- Tenant administration: platform admins onboard merchants, merchant admins open stores and invite staff
 - One database shared by all merchants; every tenant row carries `merchant_id`
 - Merchant-wide product catalogue, stock tracked per store
 - Sales with several products, prices and totals calculated on the server
@@ -47,8 +48,10 @@ src/
   health/
   idempotency/   idempotency records + header decorator
   inventory/     store stock, adjustments, stock history
+  members/       invitations, membership management
   merchants/  stores/
   payments/      provider interface, mock provider, payment records
+  platform/      platform admin API (onboard / suspend merchants)
   products/      catalogue + product cache
   sales/         checkout flow, sale reads, reconciler
 test/            e2e specs (real Postgres + Redis)
@@ -99,6 +102,7 @@ development and test settings stay separate. Real `.env*` files are git-ignored;
 |---|---|
 | `DB_*` | PostgreSQL connection. `DB_RUN_MIGRATIONS=true` runs pending migrations on boot |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Token signing (secret must be ≥ 32 chars) |
+| `INVITATION_TTL_HOURS` | How long an invitation token is valid (default 168) |
 | `REDIS_*`, `CACHE_ENABLED`, `CACHE_TTL_SECONDS` | Product cache |
 | `PAYMENT_TIMEOUT_MS` | How long we wait for the payment provider |
 | `MOCK_PAYMENT_LATENCY_MS` | Artificial delay in the mock provider |
@@ -139,6 +143,7 @@ reviewed without knowing TypeORM. `synchronize` is always off.
 | owner@bluebird.test | Bluebird Books | all | MERCHANT_ADMIN |
 | cashier.central@bluebird.test | Bluebird Books | Bluebird Central | CASHIER |
 | consultant@example.test | both | Bluebird: all / Acme: Airport | admin in one, cashier in the other |
+| admin@platform.test | – | – | platform admin (onboards / suspends merchants, no access to their data) |
 
 IDs are fixed (see [seed-data.ts](src/database/seeds/seed-data.ts)) so the Postman collection works
 right after seeding. Both merchants have a product with SKU `ESPRESSO` on purpose: SKUs are unique per
@@ -164,6 +169,7 @@ back to [.env.test.example](.env.test.example). Adjust the DB credentials there 
 | `test/idempotency.e2e-spec.ts` | **Test 4** retries, single charge, different payload, parallel duplicates |
 | `test/concurrency.e2e-spec.ts` | **Bonus** parallel sales vs. limited stock, no deadlocks |
 | `test/app.e2e-spec.ts` | root endpoint, request id and error shape on every route |
+| `test/tenant-admin.e2e-spec.ts` | merchant onboarding, invitations, role changes, last-admin rule, store admin |
 | `src/**/*.spec.ts` | permissions, request hashing, payment timeout handling, mock provider |
 
 The tests check outcomes in the database (stock levels, rows created, number of provider calls),
@@ -187,8 +193,9 @@ merchants ──< stores ──< inventory >── products >── merchants
 |---|---|
 | `merchants` | The tenant. |
 | `stores` | Belongs to one merchant. |
-| `users` | Global identities (one person can work for several merchants). No `merchant_id`. |
+| `users` | Global identities (one person can work for several merchants). No `merchant_id`. `is_platform_admin` flag. |
 | `memberships` | user + merchant + optional store + role. The only source of access rights. |
+| `invitations` | Pending access grants: email, role, store, sha256 of a one-time token, expiry. |
 | `products` | Merchant catalogue: SKU, name, price in cents, active flag. |
 | `inventory` | One row per (store, product) with the current quantity. |
 | `inventory_movements` | Every stock change with reason, delta, resulting quantity, user, sale. |
@@ -270,9 +277,43 @@ tenants. Malformed UUIDs in the URL also return 404 instead of a validation erro
 | read stores, products, inventory | ✔ | ✔ | ✔ |
 | create / read sales | ✔ | ✔ | ✔ |
 | adjust inventory | | ✔ | ✔ |
+| invite users | | cashiers, own store only | any role |
 | create / update / deactivate products | | | ✔ |
+| open / close stores | | | ✔ |
+| list members, change roles, remove access, revoke invitations | | | ✔ |
 
 Admins cover every store of their merchant; managers and cashiers only their assigned store(s).
+
+**Platform admins** (`users.is_platform_admin`) sit outside the tenants: they can onboard, rename and
+suspend merchants (`/platform/merchants`), but get no access to any merchant's products, stock or sales.
+Running the platform and reading a merchant's data are deliberately separate rights.
+
+### Tenant administration
+
+How a new merchant gets going, all through the API:
+
+```
+platform admin   POST /platform/merchants {name, slug, ownerEmail}   → merchant + owner invitation token
+owner            POST /invitations/accept {token, fullName, password} → account created, logged in
+owner            POST /merchants/:id/stores                           → opens a store
+owner            POST /merchants/:id/invitations {email, role, storeId}
+manager          POST /merchants/:id/invitations {role: CASHIER, storeId: own store}
+admin            PATCH / DELETE /merchants/:id/members/:membershipId  → change role / remove access
+```
+
+- **Invitations** carry the role and store, so nobody picks their own access. The token is 32 random bytes,
+  only its SHA-256 is stored, it is single use (row locked while accepting) and expires after
+  `INVITATION_TTL_HOURS` (default 7 days). Inviting the same person to the same scope again revokes the
+  old token. There is no mail service here, so the token is returned in the API response; in production
+  it would only be sent by email.
+- **Accepting with an existing account** (e.g. a cashier who also works for another merchant) requires that
+  account's current password, so a leaked token can't attach someone else's account.
+- **Changes apply on the next request.** Roles live in `memberships`, not in the JWT, so promoting,
+  demoting or removing someone works immediately without new tokens. Suspending a merchant or closing a
+  store also blocks access at once (the guard checks `is_active` on both).
+- **A merchant always keeps an admin.** Removing or demoting the last `MERCHANT_ADMIN` returns
+  409 `LAST_MERCHANT_ADMIN`. The admin rows are locked (`FOR UPDATE`) during the check, so two admins
+  removing each other at the same moment can't both succeed.
 
 ---
 
@@ -454,7 +495,19 @@ Send it as `Authorization: Bearer <token>` on every other request.
 | GET | `/health` | public |
 | GET | `/merchants` | any user (their own merchants) |
 | GET | `/merchants/:merchantId/stores` | store:read |
+| POST | `/merchants/:merchantId/stores` | store:manage |
+| PATCH | `/merchants/:merchantId/stores/:storeId` | store:manage (rename, close, reopen) |
 | GET | `/stores/:storeId` | store:read |
+| GET | `/merchants/:merchantId/members` | member:manage |
+| PATCH | `/merchants/:merchantId/members/:membershipId` | member:manage |
+| DELETE | `/merchants/:merchantId/members/:membershipId` | member:manage |
+| POST | `/merchants/:merchantId/invitations` | member:invite |
+| GET | `/merchants/:merchantId/invitations` | member:manage |
+| DELETE | `/merchants/:merchantId/invitations/:invitationId` | member:manage |
+| POST | `/invitations/accept` | public (token) |
+| POST | `/platform/merchants` | platform admin |
+| GET | `/platform/merchants` | platform admin |
+| PATCH | `/platform/merchants/:id` | platform admin (rename, suspend) |
 | GET | `/merchants/:merchantId/products` | product:read |
 | GET | `/merchants/:merchantId/products/:productId` | product:read |
 | POST | `/merchants/:merchantId/products` | product:write |
@@ -610,6 +663,8 @@ Things worth trying:
 - **Card declined** → 402, then check **Inventory → Stock of one product**: nothing is missing.
 - **Cross-tenant checks**: log in as an Acme user and every request returns 404.
 - Log in as the cashier and try **Adjust stock** or **Create product** → 403.
+- **Tenant admin (onboarding flow)**: run the folder top to bottom. The platform admin onboards a merchant,
+  the owner accepts, opens a store and invites a cashier, who accepts and only sees the new store.
 
 ---
 
@@ -640,5 +695,6 @@ Things worth trying:
 - The reconciler is a simple in-process interval. Running several instances is safe (row lock + status check)
   but they all poll; a proper job queue or a leader would be cleaner.
 - No refresh tokens, logout/revocation list, login rate limiting or account lockout.
-- Memberships, users, merchants and stores are managed through the seed only; there is no admin API for them.
+- Invitation tokens are returned by the API because there is no email service. Users can't change their
+  password or reset a forgotten one yet.
 - The cache has no stampede protection.

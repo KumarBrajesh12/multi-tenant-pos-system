@@ -26,6 +26,8 @@ export class TenantGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    // Note: platform admins get no special treatment here on purpose - running the
+    // platform doesn't mean seeing a merchant's sales or stock.
     const permission = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -42,12 +44,14 @@ export class TenantGuard implements CanActivate {
     const { storeId, merchantId } = req.params as { storeId?: string; merchantId?: string };
     let tenant: TenantContext | null;
 
-    if (storeId !== undefined) {
-      tenant = isUUID(storeId) ? await this.access.resolveStoreAccess(user.id, storeId) : null;
-      if (!tenant) throw new ResourceNotFoundException('Store');
-    } else if (merchantId !== undefined) {
+    // /merchants/:merchantId/... routes are merchant-scoped even if they also carry a
+    // :storeId (store admin); the service then checks the store belongs to the merchant
+    if (merchantId !== undefined) {
       tenant = isUUID(merchantId) ? await this.access.resolveMerchantAccess(user.id, merchantId) : null;
       if (!tenant) throw new ResourceNotFoundException('Merchant');
+    } else if (storeId !== undefined) {
+      tenant = isUUID(storeId) ? await this.access.resolveStoreAccess(user.id, storeId) : null;
+      if (!tenant) throw new ResourceNotFoundException('Store');
     } else {
       // a permission on a route without tenant params is a programming mistake
       throw new Error(`@RequirePermission(${permission}) used on a route without :storeId or :merchantId`);

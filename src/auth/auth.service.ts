@@ -5,6 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import { AccessService } from '../access/access.service';
 import { AppException } from '../common/exceptions/app.exception';
 import { AppConfig } from '../config/configuration';
+import { User } from '../users/entities/user.entity';
 import { UsersRepository } from '../users/users.repository';
 import { AuthUser, JwtPayload } from './auth.types';
 import { LoginDto } from './dto/login.dto';
@@ -28,13 +29,16 @@ export class AuthService {
     if (!user || !passwordOk || !user.isActive) {
       throw new AppException(HttpStatus.UNAUTHORIZED, 'INVALID_CREDENTIALS', 'Invalid email or password');
     }
+    return this.issueToken(user);
+  }
 
+  async issueToken(user: Pick<User, 'id' | 'email' | 'fullName' | 'isPlatformAdmin'>) {
     const payload: JwtPayload = { sub: user.id, email: user.email };
     return {
       accessToken: await this.jwt.signAsync(payload),
       tokenType: 'Bearer',
       expiresIn: this.config.get('jwt.expiresIn', { infer: true }),
-      user: { id: user.id, email: user.email, fullName: user.fullName },
+      user: { id: user.id, email: user.email, fullName: user.fullName, isPlatformAdmin: user.isPlatformAdmin },
     };
   }
 

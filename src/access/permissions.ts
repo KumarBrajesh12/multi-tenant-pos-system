@@ -8,6 +8,9 @@ export enum Permission {
   INVENTORY_ADJUST = 'inventory:adjust',
   SALE_CREATE = 'sale:create',
   SALE_READ = 'sale:read',
+  STORE_MANAGE = 'store:manage',
+  MEMBER_INVITE = 'member:invite',
+  MEMBER_MANAGE = 'member:manage',
 }
 
 const CASHIER: Permission[] = [
@@ -18,9 +21,15 @@ const CASHIER: Permission[] = [
   Permission.SALE_READ,
 ];
 
-const STORE_MANAGER: Permission[] = [...CASHIER, Permission.INVENTORY_ADJUST];
+// managers may invite, but only cashiers into their own store (checked in InvitationsService)
+const STORE_MANAGER: Permission[] = [...CASHIER, Permission.INVENTORY_ADJUST, Permission.MEMBER_INVITE];
 
-const MERCHANT_ADMIN: Permission[] = [...STORE_MANAGER, Permission.PRODUCT_WRITE];
+const MERCHANT_ADMIN: Permission[] = [
+  ...STORE_MANAGER,
+  Permission.PRODUCT_WRITE,
+  Permission.STORE_MANAGE,
+  Permission.MEMBER_MANAGE,
+];
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   [Role.CASHIER]: new Set(CASHIER),

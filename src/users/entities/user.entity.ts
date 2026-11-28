@@ -17,6 +17,10 @@ export class User {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  // can create/suspend merchants; gives no access to any merchant's data by itself
+  @Column({ name: 'is_platform_admin', default: false })
+  isPlatformAdmin: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

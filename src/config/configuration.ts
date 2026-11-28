@@ -17,6 +17,9 @@ export const configuration = () => ({
     secret: process.env.JWT_SECRET as string,
     expiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
   },
+  invitations: {
+    ttlHours: Number(process.env.INVITATION_TTL_HOURS ?? 168),
+  },
   redis: {
     host: process.env.REDIS_HOST ?? 'localhost',
     port: Number(process.env.REDIS_PORT ?? 6379),

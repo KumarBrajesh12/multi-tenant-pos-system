@@ -25,4 +25,17 @@ export class StoresRepository {
   findOne(merchantId: string, storeId: string): Promise<Store | null> {
     return this.repo.findOne({ where: { id: storeId, merchantId } });
   }
+
+  // admin view: includes inactive stores
+  findAllForMerchant(merchantId: string): Promise<Store[]> {
+    return this.repo.find({ where: { merchantId }, order: { name: 'ASC' } });
+  }
+
+  create(merchantId: string, data: Partial<Store>): Promise<Store> {
+    return this.repo.save(this.repo.create({ ...data, merchantId }));
+  }
+
+  save(store: Store): Promise<Store> {
+    return this.repo.save(store);
+  }
 }

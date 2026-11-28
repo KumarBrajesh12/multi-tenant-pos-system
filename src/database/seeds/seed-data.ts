@@ -19,6 +19,7 @@ export const IDS = {
     bluebirdOwner: '30000000-0000-4000-8000-000000000005',
     bluebirdCashier: '30000000-0000-4000-8000-000000000006',
     consultant: '30000000-0000-4000-8000-000000000007',
+    platformAdmin: '30000000-0000-4000-8000-000000000099',
   },
   products: {
     acmeEspresso: '40000000-0000-4000-8000-000000000001',
@@ -74,6 +75,8 @@ export const users = [
   { id: IDS.users.bluebirdOwner, email: 'owner@bluebird.test', fullName: 'Bob Bluebird' },
   { id: IDS.users.bluebirdCashier, email: 'cashier.central@bluebird.test', fullName: 'Cathy Central' },
   { id: IDS.users.consultant, email: 'consultant@example.test', fullName: 'Chris Consultant' },
+  // runs the platform: can create/suspend merchants, has no membership in any of them
+  { id: IDS.users.platformAdmin, email: 'admin@platform.test', fullName: 'Pat Platform', isPlatformAdmin: true },
 ];
 
 export const memberships = [

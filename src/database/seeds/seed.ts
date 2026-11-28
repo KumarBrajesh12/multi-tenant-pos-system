@@ -10,6 +10,7 @@ import { User } from '../../users/entities/user.entity';
 import * as data from './seed-data';
 
 const TENANT_TABLES = [
+  'invitations',
   'idempotency_records',
   'inventory_movements',
   'payments',
