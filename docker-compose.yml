@@ -1,6 +1,6 @@
 # Full stack: API + PostgreSQL + Redis.
 #   docker compose up --build -d
-#   docker compose exec api npm run seed:prod
+#   docker compose exec api npm run seed:prod -- --force
 #
 # Using your *local* Postgres instead of the container? Point the API at the host:
 #   DB_HOST_DOCKER=host.docker.internal POSTGRES_USER=<user> POSTGRES_PASSWORD=<pw> POSTGRES_DB=pos_dev \
