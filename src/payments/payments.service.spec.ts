@@ -17,7 +17,6 @@ const request = (overrides: Partial<ChargeRequest> = {}): ChargeRequest => ({
   ...overrides,
 });
 
-// the "provider throws" case logs a warning on purpose
 beforeAll(() => Logger.overrideLogger(false));
 
 describe('PaymentsService', () => {

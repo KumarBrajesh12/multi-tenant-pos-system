@@ -17,10 +17,7 @@ export type ChargeResult =
   | { status: 'SUCCEEDED'; providerReference: string }
   | { status: 'FAILED'; providerReference?: string; failureCode: string; failureMessage: string };
 
-/**
- * What the sales flow needs from a payment gateway. Swap the implementation
- * (Stripe, Adyen, ...) by binding a different class to PAYMENT_PROVIDER.
- */
+// bind a different implementation to PAYMENT_PROVIDER to use a real gateway
 export interface PaymentProvider {
   readonly name: string;
 

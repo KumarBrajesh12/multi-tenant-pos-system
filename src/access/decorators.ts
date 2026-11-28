@@ -4,10 +4,7 @@ import { TenantContext } from './tenant-context';
 
 export const PERMISSION_KEY = 'requiredPermission';
 
-/**
- * Marks a route as tenant-scoped. TenantGuard resolves the merchant/store from
- * the :storeId or :merchantId route param and checks the permission.
- */
+// checked by TenantGuard against the :merchantId / :storeId of the route
 export const RequirePermission = (permission: Permission) => SetMetadata(PERMISSION_KEY, permission);
 
 export const Tenant = createParamDecorator(

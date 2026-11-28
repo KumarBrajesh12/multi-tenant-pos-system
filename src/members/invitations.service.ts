@@ -27,12 +27,8 @@ export interface NewInvitation {
   invitedByUserId: string | null;
 }
 
-/**
- * How users join a merchant. An admin (or a manager, for cashiers in their own store)
- * creates an invitation; the response contains a one-time token. There is no mail
- * service in this project, so the token is returned to the caller - in production it
- * would be emailed as a link and never shown in the API.
- */
+// The invite token is returned in the response because there's no mail service yet.
+// TODO: email the link instead and stop returning the token.
 @Injectable()
 export class InvitationsService {
   constructor(
@@ -104,14 +100,9 @@ export class InvitationsService {
     });
   }
 
-  /**
-   * Public endpoint. New email -> account is created with the given name/password.
-   * Existing account -> the current password must be given, so a leaked token can't be
-   * used to attach someone else's account. Either way the user is logged in afterwards.
-   */
+  // New email -> create the account. Existing account -> must give its current password.
+  // Runs without RLS: the merchant isn't known until the token is looked up.
   async accept(dto: AcceptInvitationDto) {
-    // No tenant is known before the token is resolved and a new user has to be created,
-    // so this one runs as the owner (no RLS). Everything it touches is keyed by the token.
     const result = await this.db.transaction(async (em) => {
       const invitation = await this.invitations.findOpenByTokenHashForUpdate(em, hashToken(dto.token));
       if (!invitation || !(await this.isTargetActive(em, invitation))) {

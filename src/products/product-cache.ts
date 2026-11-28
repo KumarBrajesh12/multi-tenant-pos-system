@@ -2,21 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CacheService } from '../cache/cache.service';
 import { hashRequest } from '../common/utils/hash';
 
-/**
- * Cache for the product catalogue (list + detail), the most read data in the POS.
- *
- * Keys always contain the merchant id, so one tenant can never be served another
- * tenant's entries:
- *   pos:merchant:{merchantId}:products:version            -> counter
- *   pos:merchant:{merchantId}:products:v{n}:list:{hash}   -> list page
- *   pos:merchant:{merchantId}:products:v{n}:item:{id}     -> single product
- *
- * Invalidation bumps the merchant's version, so every cached page/item of that merchant
- * is skipped at once (no SCAN/DEL). Old keys simply expire with their TTL.
- *
- * Access is checked by TenantGuard before we get here, so the cached data doesn't
- * depend on who is asking - cashier and admin of the same merchant share entries.
- */
+// Product list/detail cache. Keys:
+//   pos:merchant:{merchantId}:products:version
+//   pos:merchant:{merchantId}:products:v{n}:list:{hash}
+//   pos:merchant:{merchantId}:products:v{n}:item:{id}
+// Writes bump the version instead of deleting keys; old ones expire with the TTL.
+// TenantGuard runs before this, so entries can be shared by all users of a merchant.
 @Injectable()
 export class ProductCache {
   private readonly logger = new Logger(ProductCache.name);

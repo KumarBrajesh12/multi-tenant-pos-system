@@ -47,8 +47,7 @@ export class SalesRepository {
     });
   }
 
-  // internal use (checkout / reconciler): the caller already owns the sale id and
-  // runs inside TenantDb, so RLS still limits it to the right merchant
+  // checkout / reconciler only
   findWithDetails(em: EntityManager, saleId: string): Promise<Sale> {
     return em.getRepository(Sale).findOneOrFail({
       where: { id: saleId },
@@ -76,7 +75,7 @@ export class SalesRepository {
       .getManyAndCount();
   }
 
-  // cross-tenant on purpose (background job), runs as the owner without RLS
+  // reconciler: looks across all merchants, so no RLS here
   async findStalePending(
     olderThanSeconds: number,
     limit: number,

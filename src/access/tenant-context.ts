@@ -1,9 +1,6 @@
 import { Role } from './role.enum';
 
-/**
- * Resolved by TenantGuard from the route params + the user's memberships in the DB.
- * Services only ever scope queries with these values, never with raw request input.
- */
+// Built by TenantGuard from the memberships table. Services use this, not request input.
 export interface TenantContext {
   userId: string;
   merchantId: string;

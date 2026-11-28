@@ -5,10 +5,7 @@ const ACME = IDS.merchants.acme;
 const BLUEBIRD = IDS.merchants.bluebird;
 const NOTEBOOK = IDS.products.bluebirdNotebook;
 
-/**
- * These queries deliberately have NO merchant_id filter - the kind of bug the
- * application layer could have. Postgres RLS must still keep tenants apart.
- */
+// The queries here have no merchant_id filter on purpose: RLS alone has to keep tenants apart.
 describe('Row-level security (e2e)', () => {
   let ctx: TestContext;
   let tenantDb: TenantDb;

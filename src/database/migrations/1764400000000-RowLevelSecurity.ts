@@ -14,20 +14,9 @@ const TENANT_TABLES = [
   'idempotency_records',
 ];
 
-/**
- * Row-level security as a second line of defence behind the application's own
- * merchant_id filters.
- *
- * Tenant requests run inside a transaction that does
- *   SELECT set_config('app.current_merchant_id', <id>, true);
- *   SET LOCAL ROLE pos_tenant;
- * (see TenantDb). pos_tenant is a NOLOGIN role that is not the table owner, so the
- * policies below apply to it - even when the app itself connects as a superuser.
- * If the setting is missing the policies match nothing (fail closed).
- *
- * Migrations, the seed, login/membership resolution and the platform admin API run
- * as the owner and are not affected.
- */
+// RLS on top of the app's own merchant_id filters. Tenant requests switch to the
+// pos_tenant role (see TenantDb); it isn't the table owner so the policies apply to it,
+// even if the app connects as a superuser. No merchant set -> no rows.
 export class RowLevelSecurity1764400000000 implements MigrationInterface {
   name = 'RowLevelSecurity1764400000000';
 

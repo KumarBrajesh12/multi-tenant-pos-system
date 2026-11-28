@@ -4,8 +4,7 @@ import { escapeLike } from '../common/utils/db';
 import { ListProductsQuery } from './dto/list-products.query';
 import { Product } from './entities/product.entity';
 
-// Every method takes the merchantId - there is intentionally no "find by id" without it.
-// The EntityManager comes from TenantDb.run(), so RLS applies on top of these filters.
+// every method takes merchantId; em comes from TenantDb.run()
 @Injectable()
 export class ProductsRepository {
   findOne(em: EntityManager, merchantId: string, id: string): Promise<Product | null> {

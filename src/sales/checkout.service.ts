@@ -25,22 +25,11 @@ interface ReservedSale {
   currency: string;
 }
 
-/**
- * Sale creation in three steps, so no DB transaction is open while we wait on the
- * payment provider:
- *
- *  1. TX1  claim the idempotency key, price the items from the DB, take the stock
- *          (conditional UPDATE per product, in product id order), insert the sale as
- *          PENDING_PAYMENT with its items and a PENDING payment.
- *  2.      charge the provider (no locks held).
- *  3. TX2  success -> COMPLETED. failure -> PAYMENT_FAILED and the stock is put back.
- *          The final response is stored on the idempotency record for replays.
- *
- * If the provider doesn't answer, the sale stays PENDING_PAYMENT (stock still held)
- * and SaleReconciler finishes it later.
- *
- * Both transactions run through TenantDb, i.e. with row-level security for the merchant.
- */
+// Checkout, so no transaction stays open while the provider is called:
+//   TX1: claim idempotency key, price items, take stock, insert PENDING_PAYMENT sale
+//   charge the provider
+//   TX2: COMPLETED, or PAYMENT_FAILED + stock back; store response for replays
+// No answer from the provider -> sale stays pending, SaleReconciler finishes it.
 @Injectable()
 export class CheckoutService {
   private readonly logger = new Logger(CheckoutService.name);
@@ -86,10 +75,7 @@ export class CheckoutService {
     return { ...(await this.finalize(tenant.merchantId, reserved.saleId, outcome)), replayed: false };
   }
 
-  /**
-   * Moves a PENDING_PAYMENT sale to its final state. Also used by the reconciler.
-   * Safe to call twice: only the call that still finds the sale pending changes it.
-   */
+  // also called by the reconciler; only the call that still finds the sale pending changes it
   async finalize(merchantId: string, saleId: string, outcome: ChargeOutcome): Promise<StoredResponse> {
     if (outcome.status === 'UNKNOWN') {
       const sale = await this.tenantDb.run(merchantId, (em) => this.sales.findWithDetails(em, saleId));

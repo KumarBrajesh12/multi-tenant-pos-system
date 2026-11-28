@@ -56,11 +56,7 @@ export class MembershipsRepository {
     );
   }
 
-  /**
-   * Locks the merchant's admin memberships and returns their ids. Used before
-   * removing/demoting an admin so two admins can't remove each other at the same time
-   * and leave the merchant with nobody in charge.
-   */
+  // locked so two admins can't remove each other at the same time
   async lockAdminIds(em: EntityManager, merchantId: string): Promise<string[]> {
     const rows: Array<{ id: string }> = await em.query(
       `SELECT id FROM memberships

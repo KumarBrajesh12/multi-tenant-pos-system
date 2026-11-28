@@ -4,15 +4,11 @@ import { randomUUID } from 'crypto';
 import { AppConfig } from '../../config/configuration';
 import { ChargeRequest, ChargeResult, PaymentProvider } from './payment-provider';
 
-/**
- * Fake gateway. The outcome is picked with the payment token, like test cards:
- *   tok_declined            -> FAILED (card_declined)
- *   tok_insufficient_funds  -> FAILED (insufficient_funds)
- *   tok_timeout             -> never answers in time (sale stays PENDING_PAYMENT)
- *   anything else / none    -> SUCCEEDED
- *
- * Like a real gateway it is idempotent per idempotencyKey. State is in memory only.
- */
+// Test tokens:
+//   tok_declined, tok_insufficient_funds -> FAILED
+//   tok_timeout                          -> doesn't answer in time
+//   anything else                        -> SUCCEEDED
+// Same idempotencyKey returns the same result. In-memory only.
 @Injectable()
 export class MockPaymentProvider implements PaymentProvider {
   readonly name = 'mock';

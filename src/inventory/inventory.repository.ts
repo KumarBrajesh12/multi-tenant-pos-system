@@ -71,11 +71,8 @@ export class InventoryRepository {
     return rows[0] ?? null;
   }
 
-  /**
-   * Applies a delta in one statement so concurrent adjustments/sales can't race.
-   * Adding stock upserts the row; removing stock only updates when enough is left.
-   * Returns the new quantity, or null if there wasn't enough stock.
-   */
+  // Single statement, so no read-then-write race. Returns new quantity, or null if
+  // there isn't enough stock. Positive deltas create the row if it doesn't exist.
   async applyDelta(
     em: EntityManager,
     merchantId: string,

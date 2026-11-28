@@ -140,7 +140,7 @@ export const products = [
   { id: IDS.products.bluebirdNotebook, merchantId: IDS.merchants.bluebird, sku: 'NOTEBOOK-A5', name: 'A5 Dotted Notebook', priceCents: 899 },
   { id: IDS.products.bluebirdPens, merchantId: IDS.merchants.bluebird, sku: 'PENS-GEL-6', name: 'Gel Pen Set (6)', priceCents: 1250 },
   { id: IDS.products.bluebirdBookmark, merchantId: IDS.merchants.bluebird, sku: 'BOOKMARK', name: 'Leather Bookmark', priceCents: 199 },
-  // same SKU as Acme on purpose - SKUs are only unique per merchant
+  // same SKU as Acme (SKUs are unique per merchant only)
   { id: IDS.products.bluebirdEspresso, merchantId: IDS.merchants.bluebird, sku: 'ESPRESSO', name: 'Reading Room Espresso', priceCents: 275 },
 ];
 

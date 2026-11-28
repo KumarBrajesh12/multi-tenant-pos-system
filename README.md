@@ -4,8 +4,8 @@ Backend for a simplified point-of-sale platform used by several merchants, each 
 Store staff log in, see only the stores they are assigned to, manage the merchant's product catalogue and
 the store's stock, and ring up sales that are paid through a (mock) payment provider.
 
-The focus is on the parts that are easy to get wrong in a real POS: tenant isolation, not overselling stock
-when two terminals sell at the same time, safe retries, and what happens when a payment fails or times out.
+Main points: tenant isolation, no overselling when two terminals sell at the same time, safe retries,
+and handling payments that fail or time out.
 
 - [1. Overview](#1-overview)
 - [2. Setup](#2-setup)
@@ -148,8 +148,8 @@ reviewed without knowing TypeORM. `synchronize` is always off.
 | admin@platform.test | – | – | platform admin (onboards / suspends merchants, no access to their data) |
 
 IDs are fixed (see [seed-data.ts](src/database/seeds/seed-data.ts)) so the Postman collection works
-right after seeding. Both merchants have a product with SKU `ESPRESSO` on purpose: SKUs are unique per
-merchant, not globally. The same product has different stock in each store.
+right after seeding. Both merchants have a product with SKU `ESPRESSO` (SKUs are unique per
+merchant, not globally). The same product has different stock in each store.
 
 ### Tests
 
@@ -211,7 +211,7 @@ merchants ──< stores ──< inventory >── products >── merchants
 
 Products belong to the **merchant** and are shared by all of its stores (one catalogue, one price).
 Stock is per **store**: `inventory` has `UNIQUE (store_id, product_id)`, so Downtown and Airport always
-have separate rows for the same product. A product that was never stocked in a store simply shows 0.
+have separate rows for the same product. A product that was never stocked in a store shows 0.
 
 ### Constraints that enforce the model
 
@@ -221,7 +221,7 @@ have separate rows for the same product. A product that was never stocked in a s
   row that links Merchant A's store with Merchant B's product. The same applies to sales, sale items,
   payments, stock movements, idempotency records and memberships.
 - **Row-level security** on every tenant table (see [section 4](#second-layer-postgres-row-level-security)).
-- `CHECK (quantity >= 0)` on inventory: stock can never go negative, whatever the application does.
+- `CHECK (quantity >= 0)` on inventory: stock can't go negative.
 - `CHECK (price_cents >= 0)`, `CHECK (quantity > 0)` on sale items, and
   `CHECK (line_total_cents = unit_price_cents * quantity)`.
 - `UNIQUE (merchant_id, sku)` on products. SKUs are stored upper-case.
@@ -293,7 +293,7 @@ leak. So the database enforces the same rule on its own:
   apply to it, **even if the app connects as a superuser** (superusers and table owners skip RLS, which
   is why we can't just rely on the login user). Both settings end with the transaction, so nothing leaks
   to the next request on the same pooled connection.
-- No merchant set → the policies match nothing. It fails closed.
+- No merchant set → no rows.
 - `pos_tenant` can read users' names and emails (for member lists) but has no grant on `password_hash`.
 - Everything that legitimately spans tenants runs as the owner without the role: migrations, the seed,
   login and membership resolution (`TenantGuard` needs to find the merchant first), the platform admin
@@ -316,19 +316,18 @@ the default Postgres and Docker users have.
 
 | Permission | Cashier | Store manager | Merchant admin |
 |---|:-:|:-:|:-:|
-| read stores, products, inventory | ✔ | ✔ | ✔ |
-| create / read sales | ✔ | ✔ | ✔ |
-| adjust inventory | | ✔ | ✔ |
+| read stores, products, inventory | yes | yes | yes |
+| create / read sales | yes | yes | yes |
+| adjust inventory | | yes | yes |
 | invite users | | cashiers, own store only | any role |
-| create / update / deactivate products | | | ✔ |
-| open / close stores | | | ✔ |
-| list members, change roles, remove access, revoke invitations | | | ✔ |
+| create / update / deactivate products | | | yes |
+| open / close stores | | | yes |
+| list members, change roles, remove access, revoke invitations | | | yes |
 
 Admins cover every store of their merchant; managers and cashiers only their assigned store(s).
 
 **Platform admins** (`users.is_platform_admin`) sit outside the tenants: they can onboard, rename and
 suspend merchants (`/platform/merchants`), but get no access to any merchant's products, stock or sales.
-Running the platform and reading a merchant's data are deliberately separate rights.
 
 ### Tenant administration
 
@@ -394,7 +393,7 @@ and both write. The check and the decrement have to be one atomic step. Here it'
 `UPDATE ... WHERE quantity >= n`: Postgres locks the row, and a second transaction waiting on that lock
 re-checks the `WHERE` clause against the committed value after the first one finishes. If there isn't
 enough left, it updates 0 rows and the sale is rejected. Default `READ COMMITTED` isolation is enough
-for this, and `CHECK (quantity >= 0)` is the last safety net.
+for this, and `CHECK (quantity >= 0)` is there as a backstop.
 
 I chose the conditional update over `SELECT ... FOR UPDATE` + check + update because it is one round trip
 per line and holds the lock for the shortest possible time. Manual stock adjustments use the same pattern.
@@ -410,14 +409,14 @@ lines, the sale row and the idempotency record. Nothing is left behind and the p
 inventory rows locked for that long and block every other sale of the same products. Instead, stock is
 *reserved* in TX1 (the sale is `PENDING_PAYMENT`), the provider is called without any lock, and TX2
 either confirms the sale or releases the stock (compensation). The cost is a short window where the stock
-is held by a sale that might still fail, which is the normal trade-off for card payments.
+is held by a sale that might still fail.
 
 **Payment failure / timeout.**
 
 - Declined: sale `PAYMENT_FAILED`, payment `FAILED` with the provider's code, stock released, HTTP 402.
   A failed sale is final; the POS starts a new sale (new key) to try another card.
-- No answer within `PAYMENT_TIMEOUT_MS`, or a network error: we don't know if the customer was charged, so
-  we don't guess. The sale stays `PENDING_PAYMENT` with the stock held, and the API returns 202.
+- No answer within `PAYMENT_TIMEOUT_MS`, or a network error: we don't know if the customer was charged.
+  The sale stays `PENDING_PAYMENT` with the stock held, and the API returns 202.
 - `SaleReconciler` runs every 30 s and picks up sales pending for longer than `SALE_RECONCILE_AFTER_SECONDS`.
   It asks the provider about the charge (by sale id) and finalizes the sale the normal way. If the provider
   never saw the charge, the sale is failed and the stock released.
@@ -430,7 +429,7 @@ is held by a sale that might still fail, which is the normal trade-off for card 
 ## 6. Idempotency
 
 - The client sends an `Idempotency-Key` header (8–255 chars, e.g. a UUID generated per checkout) on
-  `POST /stores/:storeId/sales`. It's required.
+  `POST /stores/:storeId/sales` (required).
 - Keys are scoped per store: `UNIQUE (store_id, idempotency_key)` on `idempotency_records`.
 - Along with the key we store a SHA-256 hash of the request body (canonical JSON, so key order in the JSON
   doesn't matter), the status (`IN_PROGRESS` / `COMPLETED`), the sale id, and the final HTTP status + body.
@@ -454,8 +453,8 @@ There is no window in which both can create a sale. The sale row carries the key
 constraint, as a second guard.
 
 **No double charge.** The provider is only called by the request that owns the key, and the key is passed
-on to the provider (`storeId:key`), which is how real gateways deduplicate charges as well. Replays never
-reach the provider. This is verified in the tests by counting provider calls.
+on to the provider (`storeId:key`) so it can dedupe too. Replays never
+reach the provider; the tests count provider calls to check this.
 
 **Failed outcomes.** A payment failure (402) is stored and replayed like a success, so retrying a declined
 checkout doesn't charge the card again. Requests rejected *before* payment (unknown product, insufficient
@@ -480,8 +479,8 @@ pos:merchant:{merchantId}:products:v{n}:item:{id}       one product
 **Invalidation.** Creating, updating or deactivating a product increments that merchant's `version`
 (after the DB write). New reads use the new version, so all of the merchant's cached pages and items are
 bypassed at once without scanning or deleting keys. Old entries expire with their TTL
-(`CACHE_TTL_SECONDS`, default 60 s). A nice side effect: a slow reader that loaded old data can only
-write it under the old version, which nobody reads anymore.
+(`CACHE_TTL_SECONDS`, default 60 s). A slow reader that loaded old data can only write it under the old
+version, which nobody reads anymore.
 
 **Tenant safety.** `TenantGuard` runs before the cache is consulted, so a user from another merchant gets a
 404 before any cache lookup. Within a merchant the cached data doesn't depend on the caller (cashier and
@@ -698,7 +697,7 @@ Import [postman/multi-tenant-pos.postman_collection.json](postman/multi-tenant-p
 3. Seeded IDs are already set as collection variables (`acmeDowntownStoreId`, `acmeEspressoId`, ...).
    Change `baseUrl` if the API isn't on `localhost:3000`.
 
-Things worth trying:
+Some things to try:
 
 - **Sales → Create sale** generates a new `Idempotency-Key` each time. **Retry last sale** reuses it and gets
   the original response back (`Idempotent-Replayed: true`); edit its body and you get 409.

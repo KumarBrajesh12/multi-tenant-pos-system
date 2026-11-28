@@ -3,11 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { AppConfig } from '../config/configuration';
 
-/**
- * Thin Redis wrapper. The cache is an optimisation only, so every call fails
- * open: if Redis is down or slow we log and fall back to the database instead
- * of failing the request.
- */
+// Redis wrapper. If Redis is down or slow we log it and go to the DB instead.
 @Injectable()
 export class CacheService implements OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);

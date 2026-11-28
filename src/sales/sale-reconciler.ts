@@ -6,11 +6,8 @@ import { PaymentsService } from '../payments/payments.service';
 import { CheckoutService } from './checkout.service';
 import { SalesRepository } from './sales.repository';
 
-/**
- * Cleans up sales stuck in PENDING_PAYMENT (provider timed out, or the process died
- * between charging and saving the result). Asks the provider what happened; if it
- * never saw the charge, the sale is failed and its stock released.
- */
+// Finishes sales stuck in PENDING_PAYMENT (provider timeout, crash after charging).
+// Asks the provider; if it never saw the charge the sale fails and stock is released.
 @Injectable()
 export class SaleReconciler {
   private readonly logger = new Logger(SaleReconciler.name);
@@ -45,7 +42,6 @@ export class SaleReconciler {
         failureCode: 'payment_timeout',
         failureMessage: 'No result from the payment provider',
       };
-      // finishing the sale itself runs with RLS for that sale's merchant
       await this.checkout.finalize(merchantId, id, outcome);
       this.logger.log(`reconciled sale ${id} -> ${outcome.status}`);
     }

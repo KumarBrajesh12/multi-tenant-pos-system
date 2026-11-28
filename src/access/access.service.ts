@@ -15,11 +15,8 @@ interface MembershipRow {
 export class AccessService {
   constructor(@InjectDataSource() private readonly db: DataSource) {}
 
-  /**
-   * Access to a single store. The store must be active, its merchant active, and the
-   * user needs either a merchant-wide membership or one for this exact store.
-   * Returns null when any of that is false - callers turn it into a 404.
-   */
+  // store + merchant must be active, user needs an admin membership or one for this store.
+  // null -> caller returns 404
   async resolveStoreAccess(userId: string, storeId: string): Promise<TenantContext | null> {
     const rows: MembershipRow[] = await this.db.query(
       `SELECT s.merchant_id, m.store_id, m.role
@@ -44,10 +41,7 @@ export class AccessService {
     };
   }
 
-  /**
-   * Access at merchant level (catalogue, store list). Any active membership in the
-   * merchant is enough to get in; what the user can do depends on their best role.
-   */
+  // any active membership in the merchant; permissions come from the highest role
   async resolveMerchantAccess(userId: string, merchantId: string): Promise<TenantContext | null> {
     const rows: MembershipRow[] = await this.db.query(
       `SELECT m.merchant_id, m.store_id, m.role

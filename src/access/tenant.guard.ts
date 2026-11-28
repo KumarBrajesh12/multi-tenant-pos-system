@@ -11,13 +11,9 @@ import { TenantContext } from './tenant-context';
 
 type TenantRequest = Request & { user?: AuthUser; tenant?: TenantContext };
 
-/**
- * Runs after JwtAuthGuard on routes with @RequirePermission().
- *
- * - user is not a member of the store/merchant (or it doesn't exist) -> 404,
- *   so other tenants' IDs can't be discovered
- * - user is a member but the role isn't enough -> 403
- */
+// Runs after JwtAuthGuard on routes with @RequirePermission().
+// Not a member (or doesn't exist) -> 404, member without the permission -> 403.
+// Platform admins get nothing extra here.
 @Injectable()
 export class TenantGuard implements CanActivate {
   constructor(
@@ -26,8 +22,6 @@ export class TenantGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Note: platform admins get no special treatment here on purpose - running the
-    // platform doesn't mean seeing a merchant's sales or stock.
     const permission = this.reflector.getAllAndOverride<Permission | undefined>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -44,8 +38,7 @@ export class TenantGuard implements CanActivate {
     const { storeId, merchantId } = req.params as { storeId?: string; merchantId?: string };
     let tenant: TenantContext | null;
 
-    // /merchants/:merchantId/... routes are merchant-scoped even if they also carry a
-    // :storeId (store admin); the service then checks the store belongs to the merchant
+    // /merchants/:merchantId/... wins over :storeId (store admin routes have both)
     if (merchantId !== undefined) {
       tenant = isUUID(merchantId) ? await this.access.resolveMerchantAccess(user.id, merchantId) : null;
       if (!tenant) throw new ResourceNotFoundException('Merchant');
@@ -53,7 +46,6 @@ export class TenantGuard implements CanActivate {
       tenant = isUUID(storeId) ? await this.access.resolveStoreAccess(user.id, storeId) : null;
       if (!tenant) throw new ResourceNotFoundException('Store');
     } else {
-      // a permission on a route without tenant params is a programming mistake
       throw new Error(`@RequirePermission(${permission}) used on a route without :storeId or :merchantId`);
     }
 

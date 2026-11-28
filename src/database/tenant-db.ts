@@ -4,17 +4,9 @@ import { DataSource, EntityManager } from 'typeorm';
 
 export const TENANT_DB_ROLE = 'pos_tenant';
 
-/**
- * Runs database work for one merchant with Postgres row-level security switched on.
- *
- * Inside the callback the connection acts as `pos_tenant` and only sees rows of
- * `merchantId`, so a query that forgets its `merchant_id` filter still can't read or
- * write another tenant's data. Both settings are transaction-local (`is_local = true`,
- * `SET LOCAL`), so nothing leaks to the next request using the pooled connection.
- *
- * Keep the callbacks short - this is a real transaction. In particular, never call the
- * payment provider inside one.
- */
+// Runs the callback in a transaction as pos_tenant with RLS limited to one merchant.
+// Both settings are transaction-local, so pooled connections come back clean.
+// Keep callbacks short (no payment provider calls in here).
 @Injectable()
 export class TenantDb {
   constructor(@InjectDataSource() private readonly db: DataSource) {}

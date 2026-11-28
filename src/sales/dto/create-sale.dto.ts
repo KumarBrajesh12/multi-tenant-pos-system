@@ -44,7 +44,7 @@ export class SalePaymentDto {
   token?: string;
 }
 
-// No prices or totals here on purpose - the server reads them from the catalogue.
+// no prices/totals, those come from the catalogue
 export class CreateSaleDto {
   @ApiProperty({ type: [SaleItemDto] })
   @IsArray()

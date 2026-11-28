@@ -18,15 +18,8 @@ export interface StoredResponse {
 
 @Injectable()
 export class IdempotencyService {
-  /**
-   * Tries to claim the key inside the caller's transaction.
-   *
-   * The unique index on (store_id, idempotency_key) does the real work: if another
-   * request with the same key is still running, this INSERT waits for its transaction
-   * to finish, then either succeeds (other one rolled back) or hits the conflict.
-   *
-   * Returns the record id when we own the key, or null if it already exists.
-   */
+  // Returns the record id if we got the key, null if it's taken. With a concurrent request
+  // on the same key, the INSERT waits on the unique index until the other tx finishes.
   async claim(em: EntityManager, scope: IdempotencyScope): Promise<string | null> {
     const rows: Array<{ id: string }> = await em.query(
       `INSERT INTO idempotency_records (merchant_id, store_id, user_id, idempotency_key, request_hash, status)
@@ -38,18 +31,12 @@ export class IdempotencyService {
     return rows[0]?.id ?? null;
   }
 
-  /**
-   * What to do with a key that was already used:
-   * - different body          -> 409, the key can't be reused for another sale
-   * - same body, finished     -> return the stored response
-   * - same body, still running -> 409, client should retry a bit later
-   */
+  // different body -> 409, same body + done -> stored response, still running -> 409
   async resolveExisting(em: EntityManager, scope: IdempotencyScope): Promise<StoredResponse> {
     const record = await em.getRepository(IdempotencyRecord).findOne({
       where: { storeId: scope.storeId, idempotencyKey: scope.key },
     });
     if (!record) {
-      // only possible if the record was cleaned up in between - treat as in progress
       throw this.inProgress();
     }
 
