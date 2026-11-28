@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { escapeLike } from '../common/utils/db';
 import { ListInventoryQuery } from './dto/list-inventory.query';
@@ -24,9 +23,12 @@ const STOCK_COLUMNS = `
 // so a product that was never stocked here shows up with quantity 0.
 @Injectable()
 export class InventoryRepository {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
-
-  async listForStore(merchantId: string, storeId: string, q: ListInventoryQuery): Promise<[StockRow[], number]> {
+  async listForStore(
+    em: EntityManager,
+    merchantId: string,
+    storeId: string,
+    q: ListInventoryQuery,
+  ): Promise<[StockRow[], number]> {
     const params: unknown[] = [merchantId, storeId];
     const filters: string[] = [];
 
@@ -44,18 +46,22 @@ export class InventoryRepository {
       LEFT JOIN inventory i ON i.product_id = p.id AND i.store_id = $2
       WHERE p.merchant_id = $1 ${filters.map((f) => `AND ${f}`).join(' ')}`;
 
-    const [rows, [{ count }]] = await Promise.all([
-      this.db.query(
-        `SELECT ${STOCK_COLUMNS} ${from} ORDER BY p.name, p.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, q.limit, q.offset],
-      ),
-      this.db.query(`SELECT count(*)::int AS count ${from}`, params),
-    ]);
+    // same transaction/connection, so run one after the other
+    const rows = await em.query(
+      `SELECT ${STOCK_COLUMNS} ${from} ORDER BY p.name, p.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, q.limit, q.offset],
+    );
+    const [{ count }] = await em.query(`SELECT count(*)::int AS count ${from}`, params);
     return [rows, count];
   }
 
-  async findForStore(merchantId: string, storeId: string, productId: string): Promise<StockRow | null> {
-    const rows: StockRow[] = await this.db.query(
+  async findForStore(
+    em: EntityManager,
+    merchantId: string,
+    storeId: string,
+    productId: string,
+  ): Promise<StockRow | null> {
+    const rows: StockRow[] = await em.query(
       `SELECT ${STOCK_COLUMNS}
          FROM products p
          LEFT JOIN inventory i ON i.product_id = p.id AND i.store_id = $2
@@ -107,12 +113,13 @@ export class InventoryRepository {
   }
 
   listMovements(
+    em: EntityManager,
     merchantId: string,
     storeId: string,
     productId: string,
     q: PaginationQueryDto,
   ): Promise<[InventoryMovement[], number]> {
-    return this.db.getRepository(InventoryMovement).findAndCount({
+    return em.getRepository(InventoryMovement).findAndCount({
       where: { merchantId, storeId, productId },
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: q.offset,

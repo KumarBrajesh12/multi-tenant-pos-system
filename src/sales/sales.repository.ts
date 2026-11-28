@@ -39,15 +39,16 @@ export class SalesRepository {
   }
 
   // tenant-facing read: always filtered by merchant and store
-  findForStore(merchantId: string, storeId: string, saleId: string): Promise<Sale | null> {
-    return this.db.getRepository(Sale).findOne({
+  findForStore(em: EntityManager, merchantId: string, storeId: string, saleId: string): Promise<Sale | null> {
+    return em.getRepository(Sale).findOne({
       where: { id: saleId, merchantId, storeId },
       relations: { items: true, payment: true },
       order: { items: { productName: 'ASC' } },
     });
   }
 
-  // internal use only (checkout / reconciler), the caller already owns the sale id
+  // internal use (checkout / reconciler): the caller already owns the sale id and
+  // runs inside TenantDb, so RLS still limits it to the right merchant
   findWithDetails(em: EntityManager, saleId: string): Promise<Sale> {
     return em.getRepository(Sale).findOneOrFail({
       where: { id: saleId },
@@ -56,8 +57,8 @@ export class SalesRepository {
     });
   }
 
-  list(merchantId: string, storeId: string, q: ListSalesQuery): Promise<[Sale[], number]> {
-    const qb = this.db
+  list(em: EntityManager, merchantId: string, storeId: string, q: ListSalesQuery): Promise<[Sale[], number]> {
+    const qb = em
       .getRepository(Sale)
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.payment', 'p')
@@ -75,15 +76,18 @@ export class SalesRepository {
       .getManyAndCount();
   }
 
-  async findStalePending(olderThanSeconds: number, limit: number): Promise<string[]> {
-    const rows: Array<{ id: string }> = await this.db.query(
-      `SELECT id FROM sales
+  // cross-tenant on purpose (background job), runs as the owner without RLS
+  async findStalePending(
+    olderThanSeconds: number,
+    limit: number,
+  ): Promise<Array<{ id: string; merchantId: string }>> {
+    return this.db.query(
+      `SELECT id, merchant_id AS "merchantId" FROM sales
         WHERE status = 'PENDING_PAYMENT'
           AND updated_at < now() - make_interval(secs => $1)
         ORDER BY updated_at
         LIMIT $2`,
       [olderThanSeconds, limit],
     );
-    return rows.map((r) => r.id);
   }
 }

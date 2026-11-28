@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { Membership } from '../access/entities/membership.entity';
 import { Role } from '../access/role.enum';
 
@@ -18,10 +17,8 @@ export interface MemberRow {
 
 @Injectable()
 export class MembershipsRepository {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
-
-  listForMerchant(merchantId: string): Promise<MemberRow[]> {
-    return this.db.query(
+  listForMerchant(em: EntityManager, merchantId: string): Promise<MemberRow[]> {
+    return em.query(
       `SELECT m.id, m.user_id AS "userId", u.email, u.full_name AS "fullName", m.role,
               m.store_id AS "storeId", s.name AS "storeName", m.is_active AS "isActive", m.created_at AS "createdAt"
          FROM memberships m

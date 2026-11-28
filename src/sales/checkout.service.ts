@@ -1,10 +1,10 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { TenantContext } from '../access/tenant-context';
 import { AppException } from '../common/exceptions/app.exception';
-import { IdempotencyScope, IdempotencyService, StoredResponse } from '../idempotency/idempotency.service';
 import { hashRequest } from '../common/utils/hash';
+import { TenantDb } from '../database/tenant-db';
+import { IdempotencyScope, IdempotencyService, StoredResponse } from '../idempotency/idempotency.service';
 import { MovementReason } from '../inventory/entities/inventory-movement.entity';
 import { InventoryRepository } from '../inventory/inventory.repository';
 import { PaymentsRepository } from '../payments/payments.repository';
@@ -38,13 +38,15 @@ interface ReservedSale {
  *
  * If the provider doesn't answer, the sale stays PENDING_PAYMENT (stock still held)
  * and SaleReconciler finishes it later.
+ *
+ * Both transactions run through TenantDb, i.e. with row-level security for the merchant.
  */
 @Injectable()
 export class CheckoutService {
   private readonly logger = new Logger(CheckoutService.name);
 
   constructor(
-    @InjectDataSource() private readonly db: DataSource,
+    private readonly tenantDb: TenantDb,
     private readonly sales: SalesRepository,
     private readonly products: ProductsRepository,
     private readonly inventory: InventoryRepository,
@@ -62,10 +64,10 @@ export class CheckoutService {
       requestHash: hashRequest(dto),
     };
 
-    const reserved = await this.db.transaction((em) => this.reserve(em, tenant, scope, dto));
+    const reserved = await this.tenantDb.run(tenant.merchantId, (em) => this.reserve(em, tenant, scope, dto));
     if (!reserved) {
       // key already used - replay, or 409 if it's a different body / still running
-      const stored = await this.idempotency.resolveExisting(scope);
+      const stored = await this.tenantDb.run(tenant.merchantId, (em) => this.idempotency.resolveExisting(em, scope));
       return { ...stored, replayed: true };
     }
 
@@ -81,20 +83,20 @@ export class CheckoutService {
     if (outcome.status === 'UNKNOWN') {
       this.logger.warn(`sale ${reserved.saleId} left pending: ${outcome.reason}`);
     }
-    return { ...(await this.finalize(reserved.saleId, outcome)), replayed: false };
+    return { ...(await this.finalize(tenant.merchantId, reserved.saleId, outcome)), replayed: false };
   }
 
   /**
    * Moves a PENDING_PAYMENT sale to its final state. Also used by the reconciler.
    * Safe to call twice: only the call that still finds the sale pending changes it.
    */
-  async finalize(saleId: string, outcome: ChargeOutcome): Promise<StoredResponse> {
+  async finalize(merchantId: string, saleId: string, outcome: ChargeOutcome): Promise<StoredResponse> {
     if (outcome.status === 'UNKNOWN') {
-      const sale = await this.sales.findWithDetails(this.db.manager, saleId);
+      const sale = await this.tenantDb.run(merchantId, (em) => this.sales.findWithDetails(em, saleId));
       return { statusCode: HttpStatus.ACCEPTED, body: toSaleView(sale) };
     }
 
-    return this.db.transaction(async (em) => {
+    return this.tenantDb.run(merchantId, async (em) => {
       const sale = await this.sales.lockPending(em, saleId);
       if (sale) {
         await this.paymentsRepo.recordResult(em, saleId, outcome);
@@ -132,9 +134,9 @@ export class CheckoutService {
 
     // prices, names and SKUs come from our catalogue, never from the client
     const products = await this.products.findMany(
+      em,
       merchantId,
       dto.items.map((i) => i.productId),
-      em,
     );
     const byId = new Map(products.map((p) => [p.id, p]));
 

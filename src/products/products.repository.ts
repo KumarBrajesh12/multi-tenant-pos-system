@@ -1,26 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { escapeLike } from '../common/utils/db';
 import { ListProductsQuery } from './dto/list-products.query';
 import { Product } from './entities/product.entity';
 
 // Every method takes the merchantId - there is intentionally no "find by id" without it.
+// The EntityManager comes from TenantDb.run(), so RLS applies on top of these filters.
 @Injectable()
 export class ProductsRepository {
-  constructor(@InjectRepository(Product) private readonly repo: Repository<Product>) {}
-
-  findOne(merchantId: string, id: string): Promise<Product | null> {
-    return this.repo.findOne({ where: { id, merchantId } });
+  findOne(em: EntityManager, merchantId: string, id: string): Promise<Product | null> {
+    return em.getRepository(Product).findOne({ where: { id, merchantId } });
   }
 
-  findMany(merchantId: string, ids: string[], em?: EntityManager): Promise<Product[]> {
-    const repo = em ? em.getRepository(Product) : this.repo;
-    return repo.find({ where: { merchantId, id: In(ids) } });
+  findMany(em: EntityManager, merchantId: string, ids: string[]): Promise<Product[]> {
+    return em.getRepository(Product).find({ where: { merchantId, id: In(ids) } });
   }
 
-  async list(merchantId: string, q: ListProductsQuery): Promise<[Product[], number]> {
-    const qb = this.repo.createQueryBuilder('p').where('p.merchantId = :merchantId', { merchantId });
+  async list(em: EntityManager, merchantId: string, q: ListProductsQuery): Promise<[Product[], number]> {
+    const qb = em
+      .getRepository(Product)
+      .createQueryBuilder('p')
+      .where('p.merchantId = :merchantId', { merchantId });
 
     if (q.search) {
       qb.andWhere('(p.name ILIKE :term OR p.sku ILIKE :term)', { term: `%${escapeLike(q.search)}%` });
@@ -37,11 +37,12 @@ export class ProductsRepository {
       .getManyAndCount();
   }
 
-  create(merchantId: string, data: Partial<Product>): Promise<Product> {
-    return this.repo.save(this.repo.create({ ...data, merchantId }));
+  create(em: EntityManager, merchantId: string, data: Partial<Product>): Promise<Product> {
+    const repo = em.getRepository(Product);
+    return repo.save(repo.create({ ...data, merchantId }));
   }
 
-  save(product: Product): Promise<Product> {
-    return this.repo.save(product);
+  save(em: EntityManager, product: Product): Promise<Product> {
+    return em.getRepository(Product).save(product);
   }
 }

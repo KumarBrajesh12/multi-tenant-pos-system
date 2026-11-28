@@ -10,6 +10,7 @@ import { TenantContext } from '../access/tenant-context';
 import { AuthService } from '../auth/auth.service';
 import { AppException, ResourceNotFoundException } from '../common/exceptions/app.exception';
 import { AppConfig } from '../config/configuration';
+import { TenantDb } from '../database/tenant-db';
 import { User } from '../users/entities/user.entity';
 import { AcceptInvitationDto, CreateInvitationDto } from './dto/invitation.dto';
 import { Invitation } from './entities/invitation.entity';
@@ -36,6 +37,7 @@ export interface NewInvitation {
 export class InvitationsService {
   constructor(
     @InjectDataSource() private readonly db: DataSource,
+    private readonly tenantDb: TenantDb,
     private readonly invitations: InvitationsRepository,
     private readonly memberships: MembershipsRepository,
     private readonly auth: AuthService,
@@ -57,7 +59,7 @@ export class InvitationsService {
       }
     }
 
-    return this.db.transaction(async (em) => {
+    return this.tenantDb.run(tenant.merchantId, async (em) => {
       if (storeId) await this.assertStoreInMerchant(em, tenant.merchantId, storeId);
       return this.createInvitation(em, {
         merchantId: tenant.merchantId,
@@ -90,14 +92,16 @@ export class InvitationsService {
   }
 
   async listOpen(tenant: TenantContext) {
-    const rows = await this.invitations.listOpen(tenant.merchantId);
+    const rows = await this.tenantDb.run(tenant.merchantId, (em) => this.invitations.listOpen(em, tenant.merchantId));
     return rows.map((i) => this.toView(i));
   }
 
   async revoke(tenant: TenantContext, invitationId: string): Promise<void> {
-    const invitation = await this.invitations.findOpen(tenant.merchantId, invitationId);
-    if (!invitation) throw new ResourceNotFoundException('Invitation');
-    await this.invitations.revoke(invitation.id);
+    await this.tenantDb.run(tenant.merchantId, async (em) => {
+      const invitation = await this.invitations.findOpen(em, tenant.merchantId, invitationId);
+      if (!invitation) throw new ResourceNotFoundException('Invitation');
+      await this.invitations.revoke(em, invitation.id);
+    });
   }
 
   /**
@@ -106,6 +110,8 @@ export class InvitationsService {
    * used to attach someone else's account. Either way the user is logged in afterwards.
    */
   async accept(dto: AcceptInvitationDto) {
+    // No tenant is known before the token is resolved and a new user has to be created,
+    // so this one runs as the owner (no RLS). Everything it touches is keyed by the token.
     const result = await this.db.transaction(async (em) => {
       const invitation = await this.invitations.findOpenByTokenHashForUpdate(em, hashToken(dto.token));
       if (!invitation || !(await this.isTargetActive(em, invitation))) {

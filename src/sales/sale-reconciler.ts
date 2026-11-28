@@ -37,17 +37,18 @@ export class SaleReconciler {
   }
 
   async reconcile(olderThanSeconds = this.config.get('sales.reconcileAfterSeconds', { infer: true })) {
-    const saleIds = await this.sales.findStalePending(olderThanSeconds, 50);
-    for (const saleId of saleIds) {
-      const charge = await this.payments.findCharge(saleId);
+    const stale = await this.sales.findStalePending(olderThanSeconds, 50);
+    for (const { id, merchantId } of stale) {
+      const charge = await this.payments.findCharge(id);
       const outcome = charge ?? {
         status: 'FAILED' as const,
         failureCode: 'payment_timeout',
         failureMessage: 'No result from the payment provider',
       };
-      await this.checkout.finalize(saleId, outcome);
-      this.logger.log(`reconciled sale ${saleId} -> ${outcome.status}`);
+      // finishing the sale itself runs with RLS for that sale's merchant
+      await this.checkout.finalize(merchantId, id, outcome);
+      this.logger.log(`reconciled sale ${id} -> ${outcome.status}`);
     }
-    return saleIds.length;
+    return stale.length;
   }
 }

@@ -1,9 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
 import { TenantContext } from '../access/tenant-context';
 import { paginate, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { AppException, ResourceNotFoundException } from '../common/exceptions/app.exception';
+import { TenantDb } from '../database/tenant-db';
 import { ProductsRepository } from '../products/products.repository';
 import { AdjustInventoryDto } from './dto/adjust-inventory.dto';
 import { ListInventoryQuery } from './dto/list-inventory.query';
@@ -12,13 +11,15 @@ import { InventoryRepository } from './inventory.repository';
 @Injectable()
 export class InventoryService {
   constructor(
-    @InjectDataSource() private readonly db: DataSource,
+    private readonly tenantDb: TenantDb,
     private readonly inventory: InventoryRepository,
     private readonly products: ProductsRepository,
   ) {}
 
   async list(tenant: TenantContext, query: ListInventoryQuery) {
-    const [rows, total] = await this.inventory.listForStore(tenant.merchantId, tenant.storeId!, query);
+    const [rows, total] = await this.tenantDb.run(tenant.merchantId, (em) =>
+      this.inventory.listForStore(em, tenant.merchantId, tenant.storeId!, query),
+    );
     return paginate(
       rows.map((r) => ({ storeId: tenant.storeId, ...r })),
       total,
@@ -27,25 +28,22 @@ export class InventoryService {
   }
 
   async get(tenant: TenantContext, productId: string) {
-    const row = await this.inventory.findForStore(tenant.merchantId, tenant.storeId!, productId);
+    const row = await this.tenantDb.run(tenant.merchantId, (em) =>
+      this.inventory.findForStore(em, tenant.merchantId, tenant.storeId!, productId),
+    );
     if (!row) throw new ResourceNotFoundException('Product');
     return { storeId: tenant.storeId, ...row };
   }
 
-  async adjust(tenant: TenantContext, dto: AdjustInventoryDto) {
+  adjust(tenant: TenantContext, dto: AdjustInventoryDto) {
     const storeId = tenant.storeId!;
-    // product has to be in this merchant's catalogue (the composite FK would also reject it)
-    const product = await this.products.findOne(tenant.merchantId, dto.productId);
-    if (!product) throw new ResourceNotFoundException('Product');
 
-    return this.db.transaction(async (em) => {
-      const quantity = await this.inventory.applyDelta(
-        em,
-        tenant.merchantId,
-        storeId,
-        product.id,
-        dto.quantityDelta,
-      );
+    return this.tenantDb.run(tenant.merchantId, async (em) => {
+      // product has to be in this merchant's catalogue (the composite FK would also reject it)
+      const product = await this.products.findOne(em, tenant.merchantId, dto.productId);
+      if (!product) throw new ResourceNotFoundException('Product');
+
+      const quantity = await this.inventory.applyDelta(em, tenant.merchantId, storeId, product.id, dto.quantityDelta);
       if (quantity === null) {
         throw new AppException(
           HttpStatus.CONFLICT,
@@ -83,10 +81,12 @@ export class InventoryService {
   }
 
   async movements(tenant: TenantContext, productId: string, query: PaginationQueryDto) {
-    const product = await this.products.findOne(tenant.merchantId, productId);
-    if (!product) throw new ResourceNotFoundException('Product');
+    const [rows, total] = await this.tenantDb.run(tenant.merchantId, async (em) => {
+      const product = await this.products.findOne(em, tenant.merchantId, productId);
+      if (!product) throw new ResourceNotFoundException('Product');
+      return this.inventory.listMovements(em, tenant.merchantId, tenant.storeId!, productId, query);
+    });
 
-    const [rows, total] = await this.inventory.listMovements(tenant.merchantId, tenant.storeId!, productId, query);
     return paginate(
       rows.map((m) => ({
         id: m.id,

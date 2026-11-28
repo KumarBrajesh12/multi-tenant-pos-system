@@ -25,7 +25,8 @@ when two terminals sell at the same time, safe retries, and what happens when a 
 
 - JWT login, role based access (merchant admin / store manager / cashier)
 - Tenant administration: platform admins onboard merchants, merchant admins open stores and invite staff
-- One database shared by all merchants; every tenant row carries `merchant_id`
+- One database shared by all merchants; every tenant row carries `merchant_id`, enforced by the app,
+  composite foreign keys and Postgres row-level security
 - Merchant-wide product catalogue, stock tracked per store
 - Sales with several products, prices and totals calculated on the server
 - Stock taken atomically, so concurrent sales can't oversell
@@ -60,7 +61,8 @@ postman/         Postman collection
 
 Each module follows controller → service → repository. Controllers only deal with HTTP,
 services hold the business rules, repositories hold the SQL. Every repository method that
-reads tenant data takes the `merchantId` as an argument.
+reads tenant data takes the `merchantId` as an argument, plus the `EntityManager` of a
+`TenantDb.run()` transaction so row-level security applies.
 
 ---
 
@@ -170,6 +172,7 @@ back to [.env.test.example](.env.test.example). Adjust the DB credentials there 
 | `test/concurrency.e2e-spec.ts` | **Bonus** parallel sales vs. limited stock, no deadlocks |
 | `test/app.e2e-spec.ts` | root endpoint, request id and error shape on every route |
 | `test/tenant-admin.e2e-spec.ts` | merchant onboarding, invitations, role changes, last-admin rule, store admin |
+| `test/row-level-security.e2e-spec.ts` | Postgres RLS: unfiltered queries still only see/change the current merchant |
 | `src/**/*.spec.ts` | permissions, request hashing, payment timeout handling, mock provider |
 
 The tests check outcomes in the database (stock levels, rows created, number of provider calls),
@@ -217,6 +220,7 @@ have separate rows for the same product. A product that was never stocked in a s
   and `inventory (product_id, merchant_id) → products (id, merchant_id)`. The database itself refuses a
   row that links Merchant A's store with Merchant B's product. The same applies to sales, sale items,
   payments, stock movements, idempotency records and memberships.
+- **Row-level security** on every tenant table (see [section 4](#second-layer-postgres-row-level-security)).
 - `CHECK (quantity >= 0)` on inventory: stock can never go negative, whatever the application does.
 - `CHECK (price_cents >= 0)`, `CHECK (quantity > 0)` on sale items, and
   `CHECK (line_total_cents = unit_price_cents * quantity)`.
@@ -269,6 +273,44 @@ prices or totals: the validation pipe rejects unknown fields.
 
 Returning the same 404 for "doesn't exist" and "not yours" means IDs can't be used to probe other
 tenants. Malformed UUIDs in the URL also return 404 instead of a validation error, for the same reason.
+
+### Second layer: Postgres row-level security
+
+The application filters every query by `merchant_id`, but a single forgotten `WHERE` would be a data
+leak. So the database enforces the same rule on its own:
+
+- Every tenant table (stores, memberships, invitations, products, inventory, inventory_movements,
+  sales, sale_items, payments, idempotency_records) has RLS enabled with the policy
+  `merchant_id = app_current_merchant_id()`, for reads (`USING`) and writes (`WITH CHECK`).
+  `merchants` only shows the current merchant's own row.
+- Tenant work goes through [`TenantDb.run(merchantId, em => ...)`](src/database/tenant-db.ts), which opens a
+  transaction and runs
+  ```sql
+  SELECT set_config('app.current_merchant_id', '<merchant id>', true);  -- transaction-local
+  SET LOCAL ROLE pos_tenant;
+  ```
+  `pos_tenant` is a `NOLOGIN` role created by the migration. It isn't the table owner, so the policies
+  apply to it, **even if the app connects as a superuser** (superusers and table owners skip RLS, which
+  is why we can't just rely on the login user). Both settings end with the transaction, so nothing leaks
+  to the next request on the same pooled connection.
+- No merchant set → the policies match nothing. It fails closed.
+- `pos_tenant` can read users' names and emails (for member lists) but has no grant on `password_hash`.
+- Everything that legitimately spans tenants runs as the owner without the role: migrations, the seed,
+  login and membership resolution (`TenantGuard` needs to find the merchant first), the platform admin
+  API, accepting an invitation (the token is the only key), and the reconciler's lookup of stuck sales.
+  The reconciler then finishes each sale inside `TenantDb.run` for that sale's merchant.
+- Repositories now receive the transaction's `EntityManager` instead of injecting their own, so tenant
+  queries can't accidentally run outside `TenantDb`.
+
+`test/row-level-security.e2e-spec.ts` runs queries **without** any `merchant_id` filter as `pos_tenant`
+and checks that only the current merchant's rows come back, that updates and deletes on other tenants
+affect nothing, that inserts or moves into another tenant are rejected, that no merchant means no rows,
+and that the role and setting don't stick to pooled connections. The whole suite also runs with RLS on,
+which shows the app works within these limits.
+
+The cost is one short transaction per request with two extra statements, which is negligible next to
+the queries themselves. The migration needs a database user that may create roles (`CREATEROLE`), which
+the default Postgres and Docker users have.
 
 **Roles**
 
@@ -672,10 +714,8 @@ Things worth trying:
 
 **Decisions not fixed by the brief**
 
-- **Merchant = tenant.** One shared database and schema, `merchant_id` on every tenant row, enforced with
-  composite foreign keys. I didn't use Postgres row-level security; it would be a good second layer but
-  needs a per-transaction session variable with TypeORM's connection pool, which felt like too much for the
-  scope.
+- **Merchant = tenant.** One shared database and schema, `merchant_id` on every tenant row, enforced three
+  ways: application filters, composite foreign keys, and row-level security.
 - Products are merchant-wide with one price for all stores. Per-store prices would need a separate table.
 - The payment is taken as part of sale creation, not as a separate call. One payment attempt per sale; a
   declined sale is final and the POS starts a new one.

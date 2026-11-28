@@ -1,18 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { EntityManager, In } from 'typeorm';
 import { TenantContext } from '../access/tenant-context';
 import { Store } from './entities/store.entity';
 
 @Injectable()
 export class StoresRepository {
-  constructor(@InjectRepository(Store) private readonly repo: Repository<Store>) {}
-
-  findAccessible(tenant: TenantContext): Promise<Store[]> {
+  findAccessible(em: EntityManager, tenant: TenantContext): Promise<Store[]> {
     if (tenant.storeIds !== 'ALL' && tenant.storeIds.length === 0) {
       return Promise.resolve([]);
     }
-    return this.repo.find({
+    return em.getRepository(Store).find({
       where: {
         merchantId: tenant.merchantId,
         isActive: true,
@@ -22,20 +19,21 @@ export class StoresRepository {
     });
   }
 
-  findOne(merchantId: string, storeId: string): Promise<Store | null> {
-    return this.repo.findOne({ where: { id: storeId, merchantId } });
+  findOne(em: EntityManager, merchantId: string, storeId: string): Promise<Store | null> {
+    return em.getRepository(Store).findOne({ where: { id: storeId, merchantId } });
   }
 
   // admin view: includes inactive stores
-  findAllForMerchant(merchantId: string): Promise<Store[]> {
-    return this.repo.find({ where: { merchantId }, order: { name: 'ASC' } });
+  findAllForMerchant(em: EntityManager, merchantId: string): Promise<Store[]> {
+    return em.getRepository(Store).find({ where: { merchantId }, order: { name: 'ASC' } });
   }
 
-  create(merchantId: string, data: Partial<Store>): Promise<Store> {
-    return this.repo.save(this.repo.create({ ...data, merchantId }));
+  create(em: EntityManager, merchantId: string, data: Partial<Store>): Promise<Store> {
+    const repo = em.getRepository(Store);
+    return repo.save(repo.create({ ...data, merchantId }));
   }
 
-  save(store: Store): Promise<Store> {
-    return this.repo.save(store);
+  save(em: EntityManager, store: Store): Promise<Store> {
+    return em.getRepository(Store).save(store);
   }
 }

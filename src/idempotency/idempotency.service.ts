@@ -1,6 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { AppException } from '../common/exceptions/app.exception';
 import { IdempotencyRecord, IdempotencyStatus } from './entities/idempotency-record.entity';
 
@@ -19,8 +18,6 @@ export interface StoredResponse {
 
 @Injectable()
 export class IdempotencyService {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
-
   /**
    * Tries to claim the key inside the caller's transaction.
    *
@@ -47,8 +44,8 @@ export class IdempotencyService {
    * - same body, finished     -> return the stored response
    * - same body, still running -> 409, client should retry a bit later
    */
-  async resolveExisting(scope: IdempotencyScope): Promise<StoredResponse> {
-    const record = await this.db.getRepository(IdempotencyRecord).findOne({
+  async resolveExisting(em: EntityManager, scope: IdempotencyScope): Promise<StoredResponse> {
+    const record = await em.getRepository(IdempotencyRecord).findOne({
       where: { storeId: scope.storeId, idempotencyKey: scope.key },
     });
     if (!record) {
